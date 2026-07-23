@@ -1,0 +1,3 @@
+__pycache__/
+*.py[cod]
+EOF && git add .gitignore src/data_transformer tests && git status --short
