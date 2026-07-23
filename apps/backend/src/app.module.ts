@@ -2,6 +2,8 @@ import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { AppController } from './app.controller';
+import { AuthModule } from './modules/auth/auth.module';
+import { UsersModule } from './modules/users/users.module';
 
 @Module({
   imports: [
@@ -24,7 +26,9 @@ import { AppController } from './app.controller';
       logging: process.env.NODE_ENV === 'development',
     }),
 
-    // Business modules will be added here
+    // Business modules
+    AuthModule,
+    UsersModule,
   ],
   controllers: [AppController],
   providers: [],

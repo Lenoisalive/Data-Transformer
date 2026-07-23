@@ -142,7 +142,21 @@ cp .env.example apps/backend/.env
 # vim apps/backend/.env
 \`\`\`
 
-### 5️⃣ Start Application
+### 5️⃣ Initialize Database
+
+Create default user accounts:
+
+\`\`\`bash
+cd apps/backend
+npm run seed
+\`\`\`
+
+This will create three default users:
+- **Admin**: admin@datatransformer.com / admin123
+- **Engineer**: engineer@datatransformer.com / engineer123
+- **Analyst**: analyst@datatransformer.com / analyst123
+
+### 6️⃣ Start Application
 
 \`\`\`bash
 # Start both frontend and backend development servers
@@ -154,6 +168,39 @@ pnpm dev:frontend  # Frontend: http://localhost:3000
 \`\`\`
 
 Visit http://localhost:3000 to see the application interface.
+
+---
+
+## 👥 User System
+
+The application includes a complete user authentication system with three role levels:
+
+### User Roles
+
+| Role | Access Level | Description |
+|------|--------------|-------------|
+| **Admin** | Full Access | Complete system access including user management |
+| **Engineer** | CRUD Operations | Most data operations, no user management |
+| **Analyst** | Read-Only | View data only, no modifications |
+
+### Authentication Features
+
+- ✅ JWT-based authentication
+- ✅ Password hashing with bcryptjs
+- ✅ Role-based access control
+- ✅ Protected API endpoints
+- ✅ Token expiration (7 days default)
+- 🔜 Password reset flow
+- 🔜 Email verification
+- 🔜 Refresh tokens
+
+### API Documentation
+
+See [User System Quick Start Guide](docs/USER_SYSTEM_QUICKSTART.md) for:
+- Default user credentials
+- API endpoint examples
+- Frontend integration guide
+- Testing instructions
 
 ---
 

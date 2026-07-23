@@ -10,10 +10,9 @@ export interface User {
 }
 
 export enum UserRole {
-  SUPER_ADMIN = 'super_admin',
-  ORG_ADMIN = 'org_admin',
-  ANALYST = 'analyst',
-  VIEWER = 'viewer',
+  ADMIN = 'admin',        // Full access: manage users, all operations
+  ENGINEER = 'engineer',  // Most CRUD operations, no user management
+  ANALYST = 'analyst',    // Read-only access, can view all data
 }
 
 // Data source types
