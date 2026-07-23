@@ -5,13 +5,13 @@ import { AppController } from './app.controller';
 
 @Module({
   imports: [
-    // 配置模块
+    // Configuration module
     ConfigModule.forRoot({
       isGlobal: true,
       envFilePath: '.env',
     }),
     
-    // 数据库连接
+    // Database connection
     TypeOrmModule.forRoot({
       type: 'postgres',
       host: process.env.DB_HOST || 'localhost',
@@ -20,11 +20,11 @@ import { AppController } from './app.controller';
       password: process.env.DB_PASSWORD || 'postgres123',
       database: process.env.DB_DATABASE || 'data_transformer',
       entities: [__dirname + '/**/*.entity{.ts,.js}'],
-      synchronize: process.env.NODE_ENV === 'development', // 生产环境使用迁移
+      synchronize: process.env.NODE_ENV === 'development', // Use migrations in production
       logging: process.env.NODE_ENV === 'development',
     }),
 
-    // 业务模块将在这里添加
+    // Business modules will be added here
   ],
   controllers: [AppController],
   providers: [],
