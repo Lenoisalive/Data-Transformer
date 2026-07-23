@@ -1,0 +1,39 @@
+.dashboard-layout {
+  min-height: 100vh;
+}
+
+.dashboard-header {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  padding: 0 24px;
+}
+
+.header-content {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  color: white;
+}
+
+.dashboard-content {
+  padding: 24px;
+  background: #f0f2f5;
+}
+
+.content-wrapper {
+  max-width: 1200px;
+  margin: 0 auto;
+}
+
+.welcome-section {
+  margin-top: 24px;
+}
+
+.welcome-section ul {
+  margin-top: 16px;
+  padding-left: 20px;
+}
+
+.welcome-section li {
+  margin: 8px 0;
+  font-size: 14px;
+}

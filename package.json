@@ -1,0 +1,27 @@
+{
+  "name": "data-transformer",
+  "version": "1.0.0",
+  "private": true,
+  "description": "医疗数据转换工作台 - 为医生提供无代码SQL操作界面",
+  "scripts": {
+    "dev:backend": "pnpm --filter backend dev",
+    "dev:frontend": "pnpm --filter frontend dev",
+    "dev": "pnpm --parallel --filter './apps/*' dev",
+    "build": "pnpm --filter './apps/*' build",
+    "install:all": "pnpm install",
+    "docker:up": "docker-compose up -d",
+    "docker:down": "docker-compose down"
+  },
+  "keywords": [
+    "medical",
+    "data-transformation",
+    "sql-builder",
+    "healthcare"
+  ],
+  "author": "",
+  "license": "MIT",
+  "engines": {
+    "node": ">=18.0.0",
+    "pnpm": ">=8.0.0"
+  }
+}
