@@ -1,0 +1,73 @@
+.project-management {
+  padding: 24px;
+}
+
+.page-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 24px;
+}
+
+.page-header h2 {
+  margin-bottom: 8px;
+}
+
+.content-layout {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 24px;
+}
+
+@media (max-width: 1200px) {
+  .content-layout {
+    grid-template-columns: 1fr;
+  }
+}
+
+.projects-list,
+.project-details {
+  min-height: 400px;
+}
+
+.selected-row {
+  background-color: #e6f7ff !important;
+}
+
+.project-info {
+  margin-bottom: 24px;
+  padding: 16px;
+  background-color: #fafafa;
+  border-radius: 4px;
+}
+
+.project-info p {
+  margin-bottom: 12px;
+}
+
+.project-info p:last-child {
+  margin-bottom: 0;
+}
+
+/* Tabs styling */
+.ant-tabs-tab {
+  font-size: 14px;
+}
+
+.ant-badge {
+  margin-left: 8px;
+}
+
+/* Table styling */
+.ant-table-tbody > tr.selected-row:hover > td {
+  background-color: #bae7ff !important;
+}
+
+/* Modal styling */
+.ant-modal-body {
+  padding: 24px;
+}
+
+.ant-form-item {
+  margin-bottom: 20px;
+}

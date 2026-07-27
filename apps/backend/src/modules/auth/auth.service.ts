@@ -17,8 +17,8 @@ export class AuthService {
     private jwtService: JwtService,
   ) {}
 
-  async validateUser(email: string, password: string): Promise<User | null> {
-    const user = await this.usersService.findByEmail(email);
+  async validateUser(usernameOrEmail: string, password: string): Promise<User | null> {
+    const user = await this.usersService.findByUsernameOrEmail(usernameOrEmail);
     
     if (!user) {
       return null;
@@ -38,10 +38,17 @@ export class AuthService {
   }
 
   async login(loginDto: LoginDto) {
-    const user = await this.validateUser(loginDto.email, loginDto.password);
+    // Support username, email, or usernameOrEmail field
+    const identifier = loginDto.usernameOrEmail || loginDto.username || loginDto.email;
+    
+    if (!identifier) {
+      throw new UnauthorizedException('Username or email is required');
+    }
+
+    const user = await this.validateUser(identifier, loginDto.password);
 
     if (!user) {
-      throw new UnauthorizedException('Invalid email or password');
+      throw new UnauthorizedException('Invalid username/email or password');
     }
 
     const payload: JwtPayload = {

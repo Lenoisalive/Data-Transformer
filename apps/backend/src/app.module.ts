@@ -4,6 +4,9 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { AppController } from './app.controller';
 import { AuthModule } from './modules/auth/auth.module';
 import { UsersModule } from './modules/users/users.module';
+import { ProjectsModule } from './modules/projects/projects.module';
+import { DatasourcesModule } from './modules/datasources/datasources.module';
+import { ExportModule } from './modules/export/export.module';
 
 @Module({
   imports: [
@@ -29,6 +32,9 @@ import { UsersModule } from './modules/users/users.module';
     // Business modules
     AuthModule,
     UsersModule,
+    ProjectsModule,
+    DatasourcesModule,
+    ExportModule,
   ],
   controllers: [AppController],
   providers: [],
