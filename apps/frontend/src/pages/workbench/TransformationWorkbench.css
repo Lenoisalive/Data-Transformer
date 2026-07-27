@@ -374,6 +374,21 @@
   border-radius: 10px;
 }
 
+.sql-preview-code {
+  max-height: 520px;
+  padding: 20px;
+  overflow: auto;
+  color: #d6deeb;
+  background: #111827;
+  border: 1px solid #263244;
+  border-radius: 12px;
+  font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+  font-size: 13px;
+  line-height: 1.7;
+  white-space: pre;
+  tab-size: 2;
+}
+
 @media (max-width: 1200px) {
   .pipeline-canvas {
     grid-template-columns: 1fr;

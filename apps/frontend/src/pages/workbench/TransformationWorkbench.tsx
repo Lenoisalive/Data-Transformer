@@ -16,6 +16,8 @@ import {
 } from 'antd';
 import {
   ArrowRightOutlined,
+  CodeOutlined,
+  CopyOutlined,
   DatabaseOutlined,
   DeleteOutlined,
   EditOutlined,
@@ -102,6 +104,7 @@ export const TransformationWorkbench: React.FC = () => {
   const [selectedOutputFieldId, setSelectedOutputFieldId] = useState<string>();
   const [selectedRuleType, setSelectedRuleType] = useState<string>();
   const [draggedOutputFieldId, setDraggedOutputFieldId] = useState<string>();
+  const [sqlPreviewOpen, setSqlPreviewOpen] = useState(false);
   const [pipelineForm] = Form.useForm<{ name: string }>();
   const [fieldForm] = Form.useForm<FieldForm>();
 
@@ -494,6 +497,61 @@ export const TransformationWorkbench: React.FC = () => {
     ...validConcatMappings.map((mapping) => mapping.outputFieldId!),
   ]);
 
+  const quoteIdentifier = (value: string) => `"${value.replace(/"/g, '""')}"`;
+  const quoteString = (value: string) => `'${value.replace(/'/g, "''")}'`;
+
+  const generatePipelineSql = () => {
+    if (!selectedInput) return '';
+
+    const directByOutputId = new Map(
+      pipeline.directPassMappings.map((mapping) => [mapping.outputFieldId, mapping]),
+    );
+    const concatByOutputId = new Map(
+      validConcatMappings.map((mapping) => [mapping.outputFieldId!, mapping]),
+    );
+    const selectExpressions = pipeline.outputFields.map((outputField) => {
+      const direct = directByOutputId.get(outputField.id);
+      if (direct) {
+        return `  source.${quoteIdentifier(direct.inputFieldName)} AS ${quoteIdentifier(outputField.name)}`;
+      }
+
+      const concat = concatByOutputId.get(outputField.id);
+      if (concat) {
+        const parts: string[] = [];
+        if (concat.leftInputFieldName) {
+          parts.push(
+            `COALESCE(CAST(source.${quoteIdentifier(concat.leftInputFieldName)} AS TEXT), '')`,
+          );
+        }
+        parts.push(quoteString(concat.separator));
+        if (concat.rightInputFieldName) {
+          parts.push(
+            `COALESCE(CAST(source.${quoteIdentifier(concat.rightInputFieldName)} AS TEXT), '')`,
+          );
+        }
+        return `  CONCAT(${parts.join(', ')}) AS ${quoteIdentifier(outputField.name)}`;
+      }
+
+      return `  NULL AS ${quoteIdentifier(outputField.name)}`;
+    });
+
+    return [
+      `CREATE TABLE ${quoteIdentifier(pipeline.outputTableName.trim())} AS`,
+      'SELECT',
+      selectExpressions.join(',\n'),
+      `FROM ${quoteIdentifier(selectedInput.name)} AS source;`,
+    ].join('\n');
+  };
+
+  const copySql = async () => {
+    try {
+      await navigator.clipboard.writeText(generatePipelineSql());
+      message.success('SQL copied to clipboard');
+    } catch {
+      message.error('Failed to copy SQL');
+    }
+  };
+
   const runPipeline = async () => {
     if (!activeProject || !selectedInput) {
       message.error('Select an input table before running the pipeline');
@@ -609,6 +667,13 @@ export const TransformationWorkbench: React.FC = () => {
         </div>
         <Space>
           <Tag color="blue">{activeProject?.name || 'No project selected'}</Tag>
+          <Button
+            icon={<CodeOutlined />}
+            disabled={!canRun}
+            onClick={() => setSqlPreviewOpen(true)}
+          >
+            SQL Preview
+          </Button>
           <Button icon={<SaveOutlined />} disabled={!activeProject} onClick={saveDraft}>
             Save draft
           </Button>
@@ -984,6 +1049,24 @@ export const TransformationWorkbench: React.FC = () => {
           </Form.Item>
           <Button type="primary" htmlType="submit">{editingFieldId ? 'Save changes' : 'Add field'}</Button>
         </Form>
+      </Modal>
+
+      <Modal
+        title={<Space><CodeOutlined /> SQL Preview</Space>}
+        open={sqlPreviewOpen}
+        width={820}
+        onCancel={() => setSqlPreviewOpen(false)}
+        footer={[
+          <Button key="close" onClick={() => setSqlPreviewOpen(false)}>Close</Button>,
+          <Button key="copy" type="primary" icon={<CopyOutlined />} onClick={copySql}>
+            Copy SQL
+          </Button>,
+        ]}
+      >
+        <Paragraph type="secondary">
+          Preview generated from the current input table, output fields and transformation rules.
+        </Paragraph>
+        <pre className="sql-preview-code"><code>{generatePipelineSql()}</code></pre>
       </Modal>
     </div>
   );
