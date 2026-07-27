@@ -1,4 +1,6 @@
 import axios from 'axios';
+import type { DataSource } from './datasource.service';
+import type { ExportTable } from './export.service';
 
 const API_URL = '/api/projects';
 
@@ -9,6 +11,8 @@ export interface Project {
   ownerId: string;
   members: User[];
   tables: ProjectTable[];
+  inputTables: DataSource[];
+  outputTables: ExportTable[];
   isActive: boolean;
   createdAt: string;
   updatedAt: string;
@@ -47,6 +51,13 @@ export interface CreateProjectTableDto {
   schema?: any;
 }
 
+export type ProjectResourceType = 'INPUT' | 'OUTPUT';
+
+export interface AvailableProjectResources {
+  inputTables: DataSource[];
+  outputTables: ExportTable[];
+}
+
 class ProjectService {
   async getProjects(): Promise<Project[]> {
     const response = await axios.get(API_URL);
@@ -70,6 +81,34 @@ class ProjectService {
 
   async deleteProject(id: string): Promise<void> {
     await axios.delete(`${API_URL}/${id}`);
+  }
+
+  async getAvailableResources(): Promise<AvailableProjectResources> {
+    const response = await axios.get(`${API_URL}/resources/available`);
+    return response.data;
+  }
+
+  async attachResource(
+    projectId: string,
+    resourceType: ProjectResourceType,
+    resourceId: string,
+  ): Promise<Project> {
+    const response = await axios.post(`${API_URL}/${projectId}/resources`, {
+      resourceType,
+      resourceId,
+    });
+    return response.data;
+  }
+
+  async detachResource(
+    projectId: string,
+    resourceType: ProjectResourceType,
+    resourceId: string,
+  ): Promise<Project> {
+    const response = await axios.delete(`${API_URL}/${projectId}/resources`, {
+      data: { resourceType, resourceId },
+    });
+    return response.data;
   }
 
   async getProjectTables(projectId: string): Promise<ProjectTable[]> {

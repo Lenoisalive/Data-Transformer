@@ -14,6 +14,7 @@ import { CreateProjectDto } from './dto/create-project.dto';
 import { UpdateProjectDto } from './dto/update-project.dto';
 import { CreateProjectTableDto } from './dto/create-project-table.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { ProjectResourceDto } from './dto/project-resource.dto';
 
 @Controller('projects')
 @UseGuards(JwtAuthGuard)
@@ -28,6 +29,11 @@ export class ProjectsController {
   @Get()
   findAll(@Request() req) {
     return this.projectsService.findAll(req.user.id);
+  }
+
+  @Get('resources/available')
+  getAvailableResources(@Request() req) {
+    return this.projectsService.getAvailableResources(req.user.id);
   }
 
   @Get(':id')
@@ -47,6 +53,24 @@ export class ProjectsController {
   @Delete(':id')
   remove(@Param('id') id: string, @Request() req) {
     return this.projectsService.remove(id, req.user.id);
+  }
+
+  @Post(':id/resources')
+  attachResource(
+    @Param('id') id: string,
+    @Body() resourceDto: ProjectResourceDto,
+    @Request() req,
+  ) {
+    return this.projectsService.attachResource(id, resourceDto, req.user.id);
+  }
+
+  @Delete(':id/resources')
+  detachResource(
+    @Param('id') id: string,
+    @Body() resourceDto: ProjectResourceDto,
+    @Request() req,
+  ) {
+    return this.projectsService.detachResource(id, resourceDto, req.user.id);
   }
 
   // Project Tables endpoints

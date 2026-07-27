@@ -19,6 +19,18 @@ export class ExportService {
    * 创建导出表记录
    */
   async create(dto: CreateExportTableDto, ownerId: string): Promise<ExportTable> {
+    if (dto.overwrite) {
+      await this.exportTableRepository.update(
+        {
+          ownerId,
+          projectId: dto.projectId,
+          name: dto.name,
+          isActive: true,
+        },
+        { isActive: false },
+      );
+    }
+
     const exportTable = this.exportTableRepository.create({
       name: dto.name,
       format: dto.format,

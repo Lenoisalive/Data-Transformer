@@ -27,6 +27,7 @@ import {
 import type { ColumnsType } from 'antd/es/table';
 import type { UploadFile } from 'antd/es/upload/interface';
 import { datasourceService, DataSource } from '../../services/datasource.service';
+import { useProject } from '../../contexts/ProjectContext';
 
 const { Title, Text } = Typography;
 const { TextArea } = Input;
@@ -41,15 +42,20 @@ export const DataImport: React.FC = () => {
   const [fileList, setFileList] = useState<UploadFile[]>([]);
   const [form] = Form.useForm();
   const [expandedRowKeys, setExpandedRowKeys] = useState<React.Key[]>([]);
+  const { activeProject } = useProject();
 
   useEffect(() => {
-    loadDatasources();
-  }, []);
+    void loadDatasources();
+  }, [activeProject?.id]);
 
   const loadDatasources = async () => {
     try {
       setLoading(true);
-      const data = await datasourceService.getAll();
+      if (!activeProject) {
+        setDatasources([]);
+        return;
+      }
+      const data = await datasourceService.getAll(activeProject.id);
       setDatasources(data);
     } catch (error: any) {
       message.error(error.response?.data?.message || 'Failed to load data sources');
@@ -72,6 +78,7 @@ export const DataImport: React.FC = () => {
         name: values.name,
         type: values.type,
         description: values.description,
+        projectId: activeProject?.id,
       });
       message.success('File uploaded successfully!');
       setUploadModalVisible(false);
@@ -293,7 +300,16 @@ export const DataImport: React.FC = () => {
         <Title level={2}>
           <UploadOutlined /> Data Import
         </Title>
-        <Button type="primary" size="large" icon={<UploadOutlined />} onClick={() => setUploadModalVisible(true)}>
+        <Space direction="vertical" size={0}>
+          <Text type="secondary">Current project: {activeProject?.name || 'None selected'}</Text>
+        </Space>
+        <Button
+          type="primary"
+          size="large"
+          icon={<UploadOutlined />}
+          disabled={!activeProject}
+          onClick={() => setUploadModalVisible(true)}
+        >
           Import Data
         </Button>
       </div>
@@ -314,7 +330,9 @@ export const DataImport: React.FC = () => {
             emptyText: (
               <Empty
                 image={<CloudUploadOutlined style={{ fontSize: 64, color: '#bfbfbf' }} />}
-                description="No data sources imported yet. Click 'Import Data' to get started."
+                description={activeProject
+                  ? `No input tables in ${activeProject.name}.`
+                  : 'Select a project before importing data.'}
               />
             ),
           }}

@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Layout, Menu, Button, Dropdown, Space, Avatar } from 'antd';
+import { Layout, Menu, Button, Dropdown, Space, Avatar, Select, Typography } from 'antd';
 import {
   MenuFoldOutlined,
   MenuUnfoldOutlined,
@@ -15,6 +15,7 @@ import {
 import { Outlet, useNavigate, useLocation } from 'react-router-dom';
 import { authService } from '../services/auth.service';
 import './MainLayout.css';
+import { useProject } from '../contexts/ProjectContext';
 
 const { Header, Sider, Content } = Layout;
 
@@ -23,6 +24,7 @@ export const MainLayout: React.FC = () => {
   const navigate = useNavigate();
   const location = useLocation();
   const user = authService.getUser();
+  const { projects, activeProject, selectProject, loading: projectsLoading } = useProject();
 
   const handleLogout = () => {
     authService.logout();
@@ -114,6 +116,18 @@ export const MainLayout: React.FC = () => {
             onClick={() => setCollapsed(!collapsed)}
             className="trigger-button"
           />
+          <div className="active-project-switcher">
+            <ProjectOutlined />
+            <Typography.Text type="secondary">Current project</Typography.Text>
+            <Select
+              value={activeProject?.id}
+              loading={projectsLoading}
+              placeholder="Select a project"
+              options={projects.map((project) => ({ value: project.id, label: project.name }))}
+              onChange={selectProject}
+              popupMatchSelectWidth={240}
+            />
+          </div>
           <div className="header-right">
             <Dropdown menu={{ items: userMenuItems }} placement="bottomRight">
               <Button type="text" className="user-button">

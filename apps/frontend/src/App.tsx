@@ -11,6 +11,7 @@ import { TransformationWorkbench } from './pages/workbench/TransformationWorkben
 import { RuleManagement } from './pages/rules/RuleManagement'
 import { UserManagement } from './pages/users/UserManagement'
 import './App.css'
+import { ProjectProvider } from './contexts/ProjectContext'
 
 function App() {
   const isAuthenticated = authService.isAuthenticated();
@@ -23,7 +24,9 @@ function App() {
           path="/" 
           element={
             <ProtectedRoute>
-              <MainLayout />
+              <ProjectProvider>
+                <MainLayout />
+              </ProjectProvider>
             </ProtectedRoute>
           }
         >

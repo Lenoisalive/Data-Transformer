@@ -26,6 +26,7 @@ import {
 } from '@ant-design/icons';
 import type { ColumnsType } from 'antd/es/table';
 import { exportTableService, ExportTable } from '../../services/export.service';
+import { useProject } from '../../contexts/ProjectContext';
 
 const { Title, Text } = Typography;
 const { TextArea } = Input;
@@ -39,15 +40,20 @@ export const DataExport: React.FC = () => {
   const [previewData, setPreviewData] = useState<any[]>([]);
   const [form] = Form.useForm();
   const [expandedRowKeys, setExpandedRowKeys] = useState<React.Key[]>([]);
+  const { activeProject } = useProject();
 
   useEffect(() => {
-    loadExportTables();
-  }, []);
+    void loadExportTables();
+  }, [activeProject?.id]);
 
   const loadExportTables = async () => {
     try {
       setLoading(true);
-      const data = await exportTableService.getAll();
+      if (!activeProject) {
+        setExportTables([]);
+        return;
+      }
+      const data = await exportTableService.getAll(activeProject.id);
       setExportTables(data);
     } catch (error: any) {
       message.error(error.response?.data?.message || 'Failed to load export tables');
@@ -86,6 +92,7 @@ export const DataExport: React.FC = () => {
         schema,
         data,
         description: values.description,
+        projectId: activeProject?.id,
       });
 
       message.success('Export table created successfully!');
@@ -289,7 +296,16 @@ export const DataExport: React.FC = () => {
         <Title level={2}>
           <ExportOutlined /> Data Export
         </Title>
-        <Button type="primary" size="large" icon={<PlusOutlined />} onClick={() => setCreateModalVisible(true)}>
+        <Space direction="vertical" size={0}>
+          <Text type="secondary">Current project: {activeProject?.name || 'None selected'}</Text>
+        </Space>
+        <Button
+          type="primary"
+          size="large"
+          icon={<PlusOutlined />}
+          disabled={!activeProject}
+          onClick={() => setCreateModalVisible(true)}
+        >
           Create Export Table
         </Button>
       </div>
@@ -304,13 +320,15 @@ export const DataExport: React.FC = () => {
           expandable={{
             expandedRowRender,
             expandedRowKeys,
-            onExpandedRowsChange: (keys) => setExpandedRowKeys(keys),
+            onExpandedRowsChange: (keys) => setExpandedRowKeys([...keys]),
           }}
           locale={{
             emptyText: (
               <Empty
                 image={<ExportOutlined style={{ fontSize: 64, color: '#bfbfbf' }} />}
-                description="No export tables yet. Click 'Create Export Table' to get started."
+                description={activeProject
+                  ? `No output tables in ${activeProject.name}.`
+                  : 'Select a project before creating output tables.'}
               />
             ),
           }}

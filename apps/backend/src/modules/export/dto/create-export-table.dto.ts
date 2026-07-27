@@ -1,4 +1,4 @@
-import { IsString, IsOptional, IsEnum, IsUUID, IsArray, ValidateNested } from 'class-validator';
+import { IsString, IsOptional, IsEnum, IsUUID, IsArray, ValidateNested, IsBoolean } from 'class-validator';
 import { Type } from 'class-transformer';
 import { ExportFormat } from '../entities/export-table.entity';
 
@@ -32,4 +32,8 @@ export class CreateExportTableDto {
   @IsUUID()
   @IsOptional()
   projectId?: string;
+
+  @IsBoolean()
+  @IsOptional()
+  overwrite?: boolean;
 }

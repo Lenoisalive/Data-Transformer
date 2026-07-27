@@ -1,30 +1,616 @@
-import React from 'react';
-import { Typography, Card, Empty } from 'antd';
-import { ToolOutlined } from '@ant-design/icons';
+import React, { useEffect, useState } from 'react';
+import {
+  Button,
+  Card,
+  Empty,
+  Form,
+  Input,
+  message,
+  Modal,
+  Popconfirm,
+  Select,
+  Space,
+  Tag,
+  Tooltip,
+  Typography,
+} from 'antd';
+import {
+  ArrowRightOutlined,
+  DatabaseOutlined,
+  DeleteOutlined,
+  EditOutlined,
+  FunctionOutlined,
+  PlusOutlined,
+  SaveOutlined,
+  TableOutlined,
+  ToolOutlined,
+} from '@ant-design/icons';
+import { useProject } from '../../contexts/ProjectContext';
+import { datasourceService, DataSource } from '../../services/datasource.service';
+import { exportTableService } from '../../services/export.service';
+import { authService } from '../../services/auth.service';
+import './TransformationWorkbench.css';
 
-const { Title, Paragraph } = Typography;
+const { Paragraph, Text, Title } = Typography;
+
+interface OutputField {
+  id: string;
+  name: string;
+  type: string;
+}
+
+interface DirectPassMapping {
+  inputFieldName: string;
+  outputFieldId: string;
+}
+
+interface Pipeline {
+  id: string;
+  name: string;
+  inputTableId?: string;
+  outputTableName: string;
+  outputFields: OutputField[];
+  directPassMappings: DirectPassMapping[];
+}
+
+interface FieldForm {
+  name: string;
+  type: string;
+}
+
+const fieldTypes = ['string', 'integer', 'decimal', 'boolean', 'date'];
+const makeId = () => `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+const DRAFT_STORAGE_VERSION = 1;
+
+const createEmptyPipeline = (): Pipeline => ({
+  id: makeId(),
+  name: 'Untitled pipeline',
+  outputTableName: 'output_table',
+  outputFields: [],
+  directPassMappings: [],
+});
+
+interface StoredPipelineDrafts {
+  version: number;
+  activePipelineId: string;
+  pipelines: Pipeline[];
+  savedAt: string;
+}
 
 export const TransformationWorkbench: React.FC = () => {
+  const { activeProject, refreshProjects } = useProject();
+  const currentUser = authService.getUser();
+  const [inputTables, setInputTables] = useState<DataSource[]>([]);
+  const [pipelines, setPipelines] = useState<Pipeline[]>(() => [createEmptyPipeline()]);
+  const [activePipelineId, setActivePipelineId] = useState(() => pipelines[0].id);
+  const [newPipelineOpen, setNewPipelineOpen] = useState(false);
+  const [fieldModalOpen, setFieldModalOpen] = useState(false);
+  const [editingFieldId, setEditingFieldId] = useState<string>();
+  const [running, setRunning] = useState(false);
+  const [selectedInputFieldName, setSelectedInputFieldName] = useState<string>();
+  const [selectedRuleType, setSelectedRuleType] = useState<string>();
+  const [pipelineForm] = Form.useForm<{ name: string }>();
+  const [fieldForm] = Form.useForm<FieldForm>();
+
+  const pipeline = pipelines.find((item) => item.id === activePipelineId) || pipelines[0];
+  const selectedInput = inputTables.find((table) => table.id === pipeline?.inputTableId);
+  const inputFields = selectedInput?.schema?.columns || [];
+  const selectedInputField = inputFields.find((field) => field.name === selectedInputFieldName);
+  const selectedMapping = pipeline?.directPassMappings.find(
+    (mapping) => mapping.inputFieldName === selectedInputFieldName,
+  );
+
+  const draftStorageKey = activeProject && currentUser
+    ? `transformation-pipeline-drafts:v${DRAFT_STORAGE_VERSION}:${currentUser.id}:${activeProject.id}`
+    : null;
+
+  useEffect(() => {
+    setSelectedInputFieldName(undefined);
+    setSelectedRuleType(undefined);
+
+    if (!draftStorageKey) {
+      const emptyPipeline = createEmptyPipeline();
+      setPipelines([emptyPipeline]);
+      setActivePipelineId(emptyPipeline.id);
+      return;
+    }
+
+    try {
+      const storedValue = localStorage.getItem(draftStorageKey);
+      if (!storedValue) {
+        const emptyPipeline = createEmptyPipeline();
+        setPipelines([emptyPipeline]);
+        setActivePipelineId(emptyPipeline.id);
+        return;
+      }
+
+      const stored = JSON.parse(storedValue) as StoredPipelineDrafts;
+      if (
+        stored.version !== DRAFT_STORAGE_VERSION ||
+        !Array.isArray(stored.pipelines) ||
+        stored.pipelines.length === 0
+      ) {
+        throw new Error('Unsupported pipeline draft format');
+      }
+
+      setPipelines(stored.pipelines);
+      setActivePipelineId(
+        stored.pipelines.some((item) => item.id === stored.activePipelineId)
+          ? stored.activePipelineId
+          : stored.pipelines[0].id,
+      );
+    } catch {
+      const emptyPipeline = createEmptyPipeline();
+      setPipelines([emptyPipeline]);
+      setActivePipelineId(emptyPipeline.id);
+      message.warning('The saved pipeline draft could not be read and was reset');
+    }
+  }, [draftStorageKey]);
+
+  useEffect(() => {
+    const loadInputTables = async () => {
+      if (!activeProject) {
+        setInputTables([]);
+        return;
+      }
+      try {
+        setInputTables(await datasourceService.getAll(activeProject.id));
+      } catch (error: any) {
+        message.error(error.response?.data?.message || 'Failed to load input tables');
+      }
+    };
+    void loadInputTables();
+  }, [activeProject?.id]);
+
+  const updatePipeline = (changes: Partial<Pipeline>) => {
+    setPipelines((current) =>
+      current.map((item) => (item.id === activePipelineId ? { ...item, ...changes } : item)),
+    );
+  };
+
+  const saveDraft = () => {
+    if (!draftStorageKey || !activeProject) {
+      message.error('Select a project before saving a pipeline draft');
+      return;
+    }
+
+    try {
+      const draft: StoredPipelineDrafts = {
+        version: DRAFT_STORAGE_VERSION,
+        activePipelineId,
+        pipelines,
+        savedAt: new Date().toISOString(),
+      };
+      localStorage.setItem(draftStorageKey, JSON.stringify(draft));
+      message.success(`Pipeline draft saved locally for ${activeProject.name}`);
+    } catch {
+      message.error('Failed to save pipeline draft to local storage');
+    }
+  };
+
+  const selectInputTable = (tableId: string) => {
+    const table = inputTables.find((item) => item.id === tableId);
+    if (!table) return;
+    const directFields = (table.schema?.columns || []).map((column) => ({
+      id: makeId(),
+      name: column.name,
+      type: column.type,
+    }));
+    updatePipeline({
+      inputTableId: tableId,
+      outputTableName: `${table.name}_output`,
+      outputFields: directFields,
+      directPassMappings: [],
+    });
+    setSelectedInputFieldName(undefined);
+    setSelectedRuleType(undefined);
+  };
+
+  const createPipeline = ({ name }: { name: string }) => {
+    const created: Pipeline = {
+      id: makeId(),
+      name,
+      outputTableName: 'output_table',
+      outputFields: [],
+      directPassMappings: [],
+    };
+    setPipelines((current) => [...current, created]);
+    setActivePipelineId(created.id);
+    pipelineForm.resetFields();
+    setNewPipelineOpen(false);
+  };
+
+  const openAddField = () => {
+    setEditingFieldId(undefined);
+    fieldForm.resetFields();
+    fieldForm.setFieldValue('type', 'string');
+    setFieldModalOpen(true);
+  };
+
+  const openEditField = (field: OutputField) => {
+    setEditingFieldId(field.id);
+    fieldForm.setFieldsValue({ name: field.name, type: field.type });
+    setFieldModalOpen(true);
+  };
+
+  const saveField = (values: FieldForm) => {
+    const nextFields = editingFieldId
+      ? pipeline.outputFields.map((field) =>
+          field.id === editingFieldId ? { ...field, ...values } : field,
+        )
+      : [...pipeline.outputFields, { id: makeId(), ...values }];
+    updatePipeline({ outputFields: nextFields });
+    setFieldModalOpen(false);
+    fieldForm.resetFields();
+  };
+
+  const removeField = (fieldId: string) => {
+    updatePipeline({
+      outputFields: pipeline.outputFields.filter((field) => field.id !== fieldId),
+      directPassMappings: pipeline.directPassMappings.filter(
+        (mapping) => mapping.outputFieldId !== fieldId,
+      ),
+    });
+  };
+
+  const selectInputField = (fieldName: string) => {
+    setSelectedInputFieldName(fieldName);
+    setSelectedRuleType(
+      pipeline.directPassMappings.some((mapping) => mapping.inputFieldName === fieldName)
+        ? 'DIRECT_PASS'
+        : undefined,
+    );
+  };
+
+  const setDirectPassOutput = (outputFieldId: string) => {
+    if (!selectedInputFieldName) return;
+    const displacedMapping = pipeline.directPassMappings.find(
+      (mapping) =>
+        mapping.outputFieldId === outputFieldId &&
+        mapping.inputFieldName !== selectedInputFieldName,
+    );
+    updatePipeline({
+      directPassMappings: [
+        ...pipeline.directPassMappings.filter(
+          (mapping) =>
+            mapping.inputFieldName !== selectedInputFieldName &&
+            mapping.outputFieldId !== outputFieldId,
+        ),
+        { inputFieldName: selectedInputFieldName, outputFieldId },
+      ],
+    });
+    if (displacedMapping) {
+      message.info(`Replaced direct pass from "${displacedMapping.inputFieldName}"`);
+    }
+  };
+
+  const runPipeline = async () => {
+    if (!activeProject || !selectedInput) {
+      message.error('Select an input table before running the pipeline');
+      return;
+    }
+    if (!pipeline.outputTableName.trim()) {
+      message.error('Enter an output table name');
+      return;
+    }
+    if (!pipeline.outputFields.length) {
+      message.error('Add at least one output field');
+      return;
+    }
+    if (pipeline.directPassMappings.length !== pipeline.outputFields.length) {
+      message.error('Every output field must have a transformation rule before running');
+      return;
+    }
+
+    try {
+      setRunning(true);
+      const existingOutputs = await exportTableService.getAll(activeProject.id);
+      const hasSameName = existingOutputs.some(
+        (table) => table.name.trim() === pipeline.outputTableName.trim(),
+      );
+      let overwrite = false;
+      if (hasSameName) {
+        overwrite = await new Promise<boolean>((resolve) => {
+          Modal.confirm({
+            title: 'Output table already exists',
+            content: `"${pipeline.outputTableName.trim()}" already exists in this project. Do you want to overwrite it?`,
+            okText: 'Overwrite',
+            okButtonProps: { danger: true },
+            cancelText: 'Cancel',
+            onOk: () => resolve(true),
+            onCancel: () => resolve(false),
+          });
+        });
+        if (!overwrite) {
+          message.info('Pipeline run cancelled');
+          return;
+        }
+      }
+
+      const sourceRows = await datasourceService.getPreview(
+        selectedInput.id,
+        Math.max(selectedInput.rowCount || 0, 100),
+      );
+      const mappingByOutputId = new Map(
+        pipeline.directPassMappings.map((mapping) => [mapping.outputFieldId, mapping.inputFieldName]),
+      );
+      const transformedRows = sourceRows.map((sourceRow) =>
+        pipeline.outputFields.reduce<Record<string, any>>((outputRow, outputField) => {
+          const inputFieldName = mappingByOutputId.get(outputField.id);
+          outputRow[outputField.name] = inputFieldName ? sourceRow[inputFieldName] : null;
+          return outputRow;
+        }, {}),
+      );
+
+      await exportTableService.create({
+        name: pipeline.outputTableName.trim(),
+        format: 'csv',
+        schema: pipeline.outputFields.map((field) => ({ name: field.name, type: field.type })),
+        data: transformedRows,
+        description: `Generated by pipeline: ${pipeline.name}`,
+        projectId: activeProject.id,
+        overwrite,
+      });
+      await refreshProjects(activeProject.id);
+      message.success(`Pipeline completed: ${transformedRows.length} rows saved to output tables`);
+    } catch (error: any) {
+      message.error(error.response?.data?.message || error.message || 'Pipeline execution failed');
+    } finally {
+      setRunning(false);
+    }
+  };
+
+  const canRun =
+    Boolean(activeProject && selectedInput && pipeline.outputTableName.trim()) &&
+    pipeline.outputFields.length > 0 &&
+    pipeline.directPassMappings.length === pipeline.outputFields.length;
+
+  if (!pipeline) return null;
+
   return (
-    <div>
-      <Title level={2}>
-        <ToolOutlined /> Transformation Workbench
-      </Title>
-      <Paragraph>
-        Visual interface for data transformation operations.
-      </Paragraph>
-      
-      <Card style={{ marginTop: 24 }}>
-        <Empty
-          description={
+    <div className="workbench">
+      <div className="workbench-topbar">
+        <div className="pipeline-picker">
+          <Text type="secondary">Pipeline</Text>
+          <Select
+            value={activePipelineId}
+            options={pipelines.map((item) => ({ value: item.id, label: item.name }))}
+            onChange={setActivePipelineId}
+          />
+          <Button icon={<PlusOutlined />} onClick={() => setNewPipelineOpen(true)}>
+            New pipeline
+          </Button>
+        </div>
+        <Space>
+          <Tag color="blue">{activeProject?.name || 'No project selected'}</Tag>
+          <Button icon={<SaveOutlined />} disabled={!activeProject} onClick={saveDraft}>
+            Save draft
+          </Button>
+          <Button
+            type="primary"
+            icon={<ArrowRightOutlined />}
+            loading={running}
+            disabled={!canRun}
+            onClick={runPipeline}
+          >
+            Run pipeline
+          </Button>
+        </Space>
+      </div>
+
+      <div className="workbench-heading">
+        <div>
+          <Title level={2}><ToolOutlined /> Transformation Workbench</Title>
+          <Paragraph>Build a data pipeline from an input table to an output table.</Paragraph>
+        </div>
+        <div className="pipeline-summary">
+          <span><strong>{inputFields.length}</strong> input fields</span>
+          <ArrowRightOutlined />
+          <span><strong>{pipeline.outputFields.length}</strong> output fields</span>
+        </div>
+      </div>
+
+      <div className="pipeline-canvas">
+        <Card
+          className="pipeline-panel input-panel"
+          title={<Space><DatabaseOutlined /> Input table</Space>}
+        >
+          <div className="panel-control">
+            <Text type="secondary">Source</Text>
+            <Select
+              value={pipeline.inputTableId}
+              placeholder={activeProject ? 'Select an input table' : 'Select a project first'}
+              disabled={!activeProject}
+              options={inputTables.map((table) => ({
+                value: table.id,
+                label: `${table.name} · ${table.rowCount || 0} rows`,
+              }))}
+              onChange={selectInputTable}
+            />
+          </div>
+
+          {selectedInput ? (
+            <>
+              <div className="table-meta">
+                <TableOutlined />
+                <span>
+                  <Text strong>{selectedInput.name}</Text>
+                  <Text type="secondary">{selectedInput.rowCount || 0} rows · {inputFields.length} fields</Text>
+                </span>
+              </div>
+              <div className="field-list">
+                {inputFields.map((field, index) => {
+                  const mapping = pipeline.directPassMappings.find(
+                    (item) => item.inputFieldName === field.name,
+                  );
+                  return (
+                  <div
+                    className={`schema-field input-field ${selectedInputFieldName === field.name ? 'selected' : ''}`}
+                    key={`${field.name}-${index}`}
+                    onClick={() => selectInputField(field.name)}
+                  >
+                    <span className="field-index">{index + 1}</span>
+                    <span className="field-copy">
+                      <Text strong>{field.name}</Text>
+                      <Text type="secondary">{field.type}</Text>
+                    </span>
+                    {mapping && <Tag color="blue">Direct pass</Tag>}
+                    <span className="connection-dot" />
+                  </div>
+                  );
+                })}
+              </div>
+            </>
+          ) : (
+            <Empty
+              image={Empty.PRESENTED_IMAGE_SIMPLE}
+              description={inputTables.length ? 'Choose an input table' : 'No input tables in this project'}
+            />
+          )}
+        </Card>
+
+        <Card
+          className="pipeline-panel rules-panel"
+          title={<Space><FunctionOutlined /> Transformation rules</Space>}
+          extra={<Tag color="blue">{pipeline.directPassMappings.length} configured</Tag>}
+        >
+          {selectedInputField ? (
+            <div className="rules-preview">
+              <div className="rule-editor">
+                <div className="selected-field-heading">
+                  <Text type="secondary">Selected input field</Text>
+                  <Title level={4}>{selectedInputField.name}</Title>
+                  <Tag>{selectedInputField.type}</Tag>
+                </div>
+
+                <div className="rule-form">
+                  <label>Transformation rule</label>
+                  <Select
+                    value={selectedRuleType}
+                    placeholder="Select a transformation rule"
+                    options={[{ value: 'DIRECT_PASS', label: 'Direct Pass' }]}
+                    onChange={setSelectedRuleType}
+                  />
+
+                  {selectedRuleType === 'DIRECT_PASS' && (
+                    <div className="direct-pass-editor">
+                      <div className="mapping-field">
+                        <Text type="secondary">Input field</Text>
+                        <Input value={selectedInputField.name} readOnly />
+                      </div>
+                      <ArrowRightOutlined className="mapping-arrow" />
+                      <div className="mapping-field">
+                        <Text type="secondary">Output field</Text>
+                        <Select
+                          value={selectedMapping?.outputFieldId}
+                          placeholder="Select an output field"
+                          options={pipeline.outputFields.map((field) => ({
+                            value: field.id,
+                            label: `${field.name} · ${field.type}`,
+                          }))}
+                          onChange={setDirectPassOutput}
+                        />
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+              <div className="mapping-summary">
+                <Text type="secondary">Pipeline mappings</Text>
+                <div>
+                  <Tag color="blue">{pipeline.directPassMappings.length} direct pass</Tag>
+                  <Tag>{Math.max(inputFields.length - pipeline.directPassMappings.length, 0)} unconfigured</Tag>
+                </div>
+              </div>
+            </div>
+          ) : (
+            <Empty
+              image={Empty.PRESENTED_IMAGE_SIMPLE}
+              description={selectedInput ? 'Click an input field to configure its transformation' : 'Select an input table to begin mapping'}
+            />
+          )}
+        </Card>
+
+        <Card
+          className="pipeline-panel output-panel"
+          title={<Space><TableOutlined /> Output table</Space>}
+          extra={<Button type="text" icon={<PlusOutlined />} onClick={openAddField}>Add field</Button>}
+        >
+          <div className="panel-control">
+            <Text type="secondary">Output table name</Text>
+            <Input
+              value={pipeline.outputTableName}
+              placeholder="Output table name"
+              onChange={(event) => updatePipeline({ outputTableName: event.target.value })}
+            />
+          </div>
+
+          <div className="table-meta output-meta">
+            <TableOutlined />
             <span>
-              Transformation Workbench features will be implemented here.
-              <br />
-              This page is ready for development.
+              <Text strong>{pipeline.outputTableName || 'Unnamed output'}</Text>
+              <Text type="secondary">{pipeline.outputFields.length} fields</Text>
             </span>
-          }
-        />
-      </Card>
+          </div>
+
+          {pipeline.outputFields.length ? (
+            <div className="field-list">
+              {pipeline.outputFields.map((field, index) => {
+                const mapping = pipeline.directPassMappings.find(
+                  (item) => item.outputFieldId === field.id,
+                );
+                return (
+                <div className={`schema-field output-field ${mapping ? 'mapped' : ''}`} key={field.id}>
+                  <span className="connection-dot" />
+                  <span className="field-index">{index + 1}</span>
+                  <span className="field-copy">
+                    <Text strong>{field.name}</Text>
+                    <Text type="secondary">{field.type}</Text>
+                  </span>
+                  {mapping && <Tag color="green">{mapping.inputFieldName}</Tag>}
+                  <Space size={2} className="field-actions">
+                    <Tooltip title="Edit field">
+                      <Button type="text" size="small" icon={<EditOutlined />} onClick={() => openEditField(field)} />
+                    </Tooltip>
+                    <Popconfirm title="Delete this output field?" onConfirm={() => removeField(field.id)}>
+                      <Button type="text" danger size="small" icon={<DeleteOutlined />} />
+                    </Popconfirm>
+                  </Space>
+                </div>
+                );
+              })}
+            </div>
+          ) : (
+            <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="Add output fields or select an input table" />
+          )}
+        </Card>
+      </div>
+
+      <Modal title="New pipeline" open={newPipelineOpen} footer={null} onCancel={() => setNewPipelineOpen(false)}>
+        <Form form={pipelineForm} layout="vertical" onFinish={createPipeline}>
+          <Form.Item name="name" label="Pipeline name" rules={[{ required: true, message: 'Enter a pipeline name' }]}>
+            <Input autoFocus placeholder="e.g. Drug order transformation" />
+          </Form.Item>
+          <Button type="primary" htmlType="submit">Create pipeline</Button>
+        </Form>
+      </Modal>
+
+      <Modal
+        title={editingFieldId ? 'Edit output field' : 'Add output field'}
+        open={fieldModalOpen}
+        footer={null}
+        onCancel={() => setFieldModalOpen(false)}
+      >
+        <Form form={fieldForm} layout="vertical" onFinish={saveField}>
+          <Form.Item name="name" label="Field name" rules={[{ required: true, message: 'Enter a field name' }]}>
+            <Input autoFocus placeholder="amount_with_unit" />
+          </Form.Item>
+          <Form.Item name="type" label="Data type" rules={[{ required: true }]}>
+            <Select options={fieldTypes.map((type) => ({ value: type, label: type }))} />
+          </Form.Item>
+          <Button type="primary" htmlType="submit">{editingFieldId ? 'Save changes' : 'Add field'}</Button>
+        </Form>
+      </Modal>
     </div>
   );
 };

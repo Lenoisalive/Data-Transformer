@@ -109,6 +109,18 @@
   gap: 16px;
 }
 
+.active-project-switcher {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-right: auto;
+  margin-left: 12px;
+}
+
+.active-project-switcher .ant-select {
+  min-width: 200px;
+}
+
 .user-button {
   height: 48px;
   padding: 0 16px;
@@ -177,6 +189,10 @@
 
   .user-name,
   .user-role {
+    display: none;
+  }
+
+  .active-project-switcher .ant-typography {
     display: none;
   }
 

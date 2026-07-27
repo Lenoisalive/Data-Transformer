@@ -34,6 +34,7 @@ export interface CreateExportTablePayload {
   data: any[];
   description?: string;
   projectId?: string;
+  overwrite?: boolean;
 }
 
 class ExportTableService {
