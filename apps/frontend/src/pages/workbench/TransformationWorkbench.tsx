@@ -20,6 +20,7 @@ import {
   DeleteOutlined,
   EditOutlined,
   FunctionOutlined,
+  HolderOutlined,
   PlusOutlined,
   SaveOutlined,
   TableOutlined,
@@ -44,6 +45,14 @@ interface DirectPassMapping {
   outputFieldId: string;
 }
 
+interface ConcatMapping {
+  anchorInputFieldName: string;
+  leftInputFieldName?: string;
+  separator: string;
+  rightInputFieldName?: string;
+  outputFieldId?: string;
+}
+
 interface Pipeline {
   id: string;
   name: string;
@@ -51,6 +60,7 @@ interface Pipeline {
   outputTableName: string;
   outputFields: OutputField[];
   directPassMappings: DirectPassMapping[];
+  concatMappings: ConcatMapping[];
 }
 
 interface FieldForm {
@@ -68,6 +78,7 @@ const createEmptyPipeline = (): Pipeline => ({
   outputTableName: 'output_table',
   outputFields: [],
   directPassMappings: [],
+  concatMappings: [],
 });
 
 interface StoredPipelineDrafts {
@@ -88,7 +99,9 @@ export const TransformationWorkbench: React.FC = () => {
   const [editingFieldId, setEditingFieldId] = useState<string>();
   const [running, setRunning] = useState(false);
   const [selectedInputFieldName, setSelectedInputFieldName] = useState<string>();
+  const [selectedOutputFieldId, setSelectedOutputFieldId] = useState<string>();
   const [selectedRuleType, setSelectedRuleType] = useState<string>();
+  const [draggedOutputFieldId, setDraggedOutputFieldId] = useState<string>();
   const [pipelineForm] = Form.useForm<{ name: string }>();
   const [fieldForm] = Form.useForm<FieldForm>();
 
@@ -96,8 +109,16 @@ export const TransformationWorkbench: React.FC = () => {
   const selectedInput = inputTables.find((table) => table.id === pipeline?.inputTableId);
   const inputFields = selectedInput?.schema?.columns || [];
   const selectedInputField = inputFields.find((field) => field.name === selectedInputFieldName);
-  const selectedMapping = pipeline?.directPassMappings.find(
-    (mapping) => mapping.inputFieldName === selectedInputFieldName,
+  const selectedOutputField = pipeline?.outputFields.find((field) => field.id === selectedOutputFieldId);
+  const selectedMapping = pipeline?.directPassMappings.find((mapping) =>
+    selectedOutputFieldId
+      ? mapping.outputFieldId === selectedOutputFieldId
+      : mapping.inputFieldName === selectedInputFieldName,
+  );
+  const selectedConcatMapping = pipeline?.concatMappings.find((mapping) =>
+    selectedOutputFieldId
+      ? mapping.outputFieldId === selectedOutputFieldId
+      : mapping.anchorInputFieldName === selectedInputFieldName,
   );
 
   const draftStorageKey = activeProject && currentUser
@@ -106,6 +127,7 @@ export const TransformationWorkbench: React.FC = () => {
 
   useEffect(() => {
     setSelectedInputFieldName(undefined);
+    setSelectedOutputFieldId(undefined);
     setSelectedRuleType(undefined);
 
     if (!draftStorageKey) {
@@ -133,11 +155,16 @@ export const TransformationWorkbench: React.FC = () => {
         throw new Error('Unsupported pipeline draft format');
       }
 
-      setPipelines(stored.pipelines);
+      const normalizedPipelines = stored.pipelines.map((item) => ({
+        ...item,
+        directPassMappings: item.directPassMappings || [],
+        concatMappings: item.concatMappings || [],
+      }));
+      setPipelines(normalizedPipelines);
       setActivePipelineId(
-        stored.pipelines.some((item) => item.id === stored.activePipelineId)
+        normalizedPipelines.some((item) => item.id === stored.activePipelineId)
           ? stored.activePipelineId
-          : stored.pipelines[0].id,
+          : normalizedPipelines[0].id,
       );
     } catch {
       const emptyPipeline = createEmptyPipeline();
@@ -201,8 +228,10 @@ export const TransformationWorkbench: React.FC = () => {
       outputTableName: `${table.name}_output`,
       outputFields: directFields,
       directPassMappings: [],
+      concatMappings: [],
     });
     setSelectedInputFieldName(undefined);
+    setSelectedOutputFieldId(undefined);
     setSelectedRuleType(undefined);
   };
 
@@ -213,6 +242,7 @@ export const TransformationWorkbench: React.FC = () => {
       outputTableName: 'output_table',
       outputFields: [],
       directPassMappings: [],
+      concatMappings: [],
     };
     setPipelines((current) => [...current, created]);
     setActivePipelineId(created.id);
@@ -250,16 +280,100 @@ export const TransformationWorkbench: React.FC = () => {
       directPassMappings: pipeline.directPassMappings.filter(
         (mapping) => mapping.outputFieldId !== fieldId,
       ),
+      concatMappings: pipeline.concatMappings.filter(
+        (mapping) => mapping.outputFieldId !== fieldId,
+      ),
     });
+    if (selectedOutputFieldId === fieldId) {
+      setSelectedOutputFieldId(undefined);
+      setSelectedRuleType(undefined);
+    }
+  };
+
+  const switchPipeline = (pipelineId: string) => {
+    setActivePipelineId(pipelineId);
+    setSelectedInputFieldName(undefined);
+    setSelectedOutputFieldId(undefined);
+    setSelectedRuleType(undefined);
+  };
+
+  const reorderOutputFields = (targetFieldId: string) => {
+    if (!draggedOutputFieldId || draggedOutputFieldId === targetFieldId) return;
+    const fromIndex = pipeline.outputFields.findIndex((field) => field.id === draggedOutputFieldId);
+    const toIndex = pipeline.outputFields.findIndex((field) => field.id === targetFieldId);
+    if (fromIndex < 0 || toIndex < 0) return;
+
+    const nextFields = [...pipeline.outputFields];
+    const [movedField] = nextFields.splice(fromIndex, 1);
+    nextFields.splice(toIndex, 0, movedField);
+    updatePipeline({ outputFields: nextFields });
+    setDraggedOutputFieldId(undefined);
   };
 
   const selectInputField = (fieldName: string) => {
     setSelectedInputFieldName(fieldName);
-    setSelectedRuleType(
-      pipeline.directPassMappings.some((mapping) => mapping.inputFieldName === fieldName)
-        ? 'DIRECT_PASS'
-        : undefined,
-    );
+    setSelectedOutputFieldId(undefined);
+    if (pipeline.directPassMappings.some((mapping) => mapping.inputFieldName === fieldName)) {
+      setSelectedRuleType('DIRECT_PASS');
+    } else if (pipeline.concatMappings.some((mapping) => mapping.anchorInputFieldName === fieldName)) {
+      setSelectedRuleType('CONCAT');
+    } else {
+      setSelectedRuleType(undefined);
+    }
+  };
+
+  const selectOutputField = (fieldId: string) => {
+    setSelectedOutputFieldId(fieldId);
+    setSelectedInputFieldName(undefined);
+    if (pipeline.directPassMappings.some((mapping) => mapping.outputFieldId === fieldId)) {
+      setSelectedRuleType('DIRECT_PASS');
+    } else if (pipeline.concatMappings.some((mapping) => mapping.outputFieldId === fieldId)) {
+      setSelectedRuleType('CONCAT');
+    } else {
+      setSelectedRuleType(undefined);
+    }
+  };
+
+  const selectRuleType = (ruleType: string) => {
+    if (!selectedInputFieldName && !selectedOutputFieldId) return;
+    setSelectedRuleType(ruleType);
+
+    if (ruleType === 'DIRECT_PASS') {
+      updatePipeline({
+        concatMappings: pipeline.concatMappings.filter(
+          (mapping) =>
+            selectedOutputFieldId
+              ? mapping.outputFieldId !== selectedOutputFieldId
+              : mapping.anchorInputFieldName !== selectedInputFieldName,
+        ),
+      });
+    } else if (ruleType === 'CONCAT') {
+      const existing = pipeline.concatMappings.find(
+        (mapping) =>
+          selectedOutputFieldId
+            ? mapping.outputFieldId === selectedOutputFieldId
+            : mapping.anchorInputFieldName === selectedInputFieldName,
+      );
+      updatePipeline({
+        directPassMappings: pipeline.directPassMappings.filter(
+          (mapping) =>
+            selectedOutputFieldId
+              ? mapping.outputFieldId !== selectedOutputFieldId
+              : mapping.inputFieldName !== selectedInputFieldName,
+        ),
+        concatMappings: existing
+          ? pipeline.concatMappings
+          : [
+              ...pipeline.concatMappings,
+              {
+                anchorInputFieldName: selectedInputFieldName || '',
+                leftInputFieldName: selectedInputFieldName,
+                separator: '',
+                outputFieldId: selectedOutputFieldId,
+              },
+            ],
+      });
+    }
   };
 
   const setDirectPassOutput = (outputFieldId: string) => {
@@ -278,11 +392,107 @@ export const TransformationWorkbench: React.FC = () => {
         ),
         { inputFieldName: selectedInputFieldName, outputFieldId },
       ],
+      concatMappings: pipeline.concatMappings.filter(
+        (mapping) =>
+          mapping.anchorInputFieldName !== selectedInputFieldName &&
+          mapping.outputFieldId !== outputFieldId,
+      ),
     });
     if (displacedMapping) {
       message.info(`Replaced direct pass from "${displacedMapping.inputFieldName}"`);
     }
   };
+
+  const setDirectPassInput = (inputFieldName: string) => {
+    if (!selectedOutputFieldId) return;
+    const displacedMapping = pipeline.directPassMappings.find(
+      (mapping) =>
+        mapping.inputFieldName === inputFieldName &&
+        mapping.outputFieldId !== selectedOutputFieldId,
+    );
+    updatePipeline({
+      directPassMappings: [
+        ...pipeline.directPassMappings.filter(
+          (mapping) =>
+            mapping.outputFieldId !== selectedOutputFieldId &&
+            mapping.inputFieldName !== inputFieldName,
+        ),
+        { inputFieldName, outputFieldId: selectedOutputFieldId },
+      ],
+      concatMappings: pipeline.concatMappings.filter(
+        (mapping) => mapping.outputFieldId !== selectedOutputFieldId,
+      ),
+    });
+    if (displacedMapping) {
+      message.info(`Replaced the previous direct pass from "${inputFieldName}"`);
+    }
+  };
+
+  const updateConcatMapping = (changes: Partial<ConcatMapping>) => {
+    if (!selectedInputFieldName && !selectedOutputFieldId) return;
+    const existing = pipeline.concatMappings.find(
+      (mapping) =>
+        selectedOutputFieldId
+          ? mapping.outputFieldId === selectedOutputFieldId
+          : mapping.anchorInputFieldName === selectedInputFieldName,
+    ) || {
+      anchorInputFieldName: selectedInputFieldName || '',
+      leftInputFieldName: selectedInputFieldName,
+      separator: '',
+      outputFieldId: selectedOutputFieldId,
+    };
+    const next = {
+      ...existing,
+      ...changes,
+      anchorInputFieldName:
+        existing.anchorInputFieldName ||
+        selectedInputFieldName ||
+        changes.leftInputFieldName ||
+        changes.rightInputFieldName ||
+        '',
+      outputFieldId: selectedOutputFieldId || changes.outputFieldId || existing.outputFieldId,
+    };
+    const displacedDirect = changes.outputFieldId
+      ? pipeline.directPassMappings.find((mapping) => mapping.outputFieldId === changes.outputFieldId)
+      : undefined;
+    const displacedConcat = changes.outputFieldId
+      ? pipeline.concatMappings.find(
+          (mapping) =>
+            mapping.outputFieldId === changes.outputFieldId &&
+            mapping.anchorInputFieldName !== selectedInputFieldName,
+        )
+      : undefined;
+
+    updatePipeline({
+      directPassMappings: pipeline.directPassMappings.filter(
+        (mapping) => !changes.outputFieldId || mapping.outputFieldId !== changes.outputFieldId,
+      ),
+      concatMappings: [
+        ...pipeline.concatMappings.filter(
+          (mapping) =>
+            (selectedOutputFieldId
+              ? mapping.outputFieldId !== selectedOutputFieldId
+              : mapping.anchorInputFieldName !== selectedInputFieldName) &&
+            (!changes.outputFieldId || mapping.outputFieldId !== changes.outputFieldId),
+        ),
+        next,
+      ],
+    });
+
+    if (displacedDirect || displacedConcat) {
+      message.info('Replaced the previous transformation for this output field');
+    }
+  };
+
+  const validConcatMappings = pipeline.concatMappings.filter(
+    (mapping) =>
+      mapping.outputFieldId &&
+      (mapping.leftInputFieldName || mapping.rightInputFieldName),
+  );
+  const configuredOutputIds = new Set([
+    ...pipeline.directPassMappings.map((mapping) => mapping.outputFieldId),
+    ...validConcatMappings.map((mapping) => mapping.outputFieldId!),
+  ]);
 
   const runPipeline = async () => {
     if (!activeProject || !selectedInput) {
@@ -297,7 +507,7 @@ export const TransformationWorkbench: React.FC = () => {
       message.error('Add at least one output field');
       return;
     }
-    if (pipeline.directPassMappings.length !== pipeline.outputFields.length) {
+    if (configuredOutputIds.size !== pipeline.outputFields.length) {
       message.error('Every output field must have a transformation rule before running');
       return;
     }
@@ -334,10 +544,26 @@ export const TransformationWorkbench: React.FC = () => {
       const mappingByOutputId = new Map(
         pipeline.directPassMappings.map((mapping) => [mapping.outputFieldId, mapping.inputFieldName]),
       );
+      const concatByOutputId = new Map(
+        validConcatMappings.map((mapping) => [mapping.outputFieldId!, mapping]),
+      );
       const transformedRows = sourceRows.map((sourceRow) =>
         pipeline.outputFields.reduce<Record<string, any>>((outputRow, outputField) => {
           const inputFieldName = mappingByOutputId.get(outputField.id);
-          outputRow[outputField.name] = inputFieldName ? sourceRow[inputFieldName] : null;
+          const concat = concatByOutputId.get(outputField.id);
+          if (inputFieldName) {
+            outputRow[outputField.name] = sourceRow[inputFieldName];
+          } else if (concat) {
+            const left = concat.leftInputFieldName
+              ? sourceRow[concat.leftInputFieldName] ?? ''
+              : '';
+            const right = concat.rightInputFieldName
+              ? sourceRow[concat.rightInputFieldName] ?? ''
+              : '';
+            outputRow[outputField.name] = `${left}${concat.separator}${right}`;
+          } else {
+            outputRow[outputField.name] = null;
+          }
           return outputRow;
         }, {}),
       );
@@ -363,7 +589,7 @@ export const TransformationWorkbench: React.FC = () => {
   const canRun =
     Boolean(activeProject && selectedInput && pipeline.outputTableName.trim()) &&
     pipeline.outputFields.length > 0 &&
-    pipeline.directPassMappings.length === pipeline.outputFields.length;
+    configuredOutputIds.size === pipeline.outputFields.length;
 
   if (!pipeline) return null;
 
@@ -375,7 +601,7 @@ export const TransformationWorkbench: React.FC = () => {
           <Select
             value={activePipelineId}
             options={pipelines.map((item) => ({ value: item.id, label: item.name }))}
-            onChange={setActivePipelineId}
+            onChange={switchPipeline}
           />
           <Button icon={<PlusOutlined />} onClick={() => setNewPipelineOpen(true)}>
             New pipeline
@@ -440,8 +666,16 @@ export const TransformationWorkbench: React.FC = () => {
               </div>
               <div className="field-list">
                 {inputFields.map((field, index) => {
-                  const mapping = pipeline.directPassMappings.find(
+                  const directMapping = pipeline.directPassMappings.find(
                     (item) => item.inputFieldName === field.name,
+                  );
+                  const concatMapping = pipeline.concatMappings.find(
+                    (item) => item.anchorInputFieldName === field.name,
+                  );
+                  const usedByConcat = pipeline.concatMappings.some(
+                    (item) =>
+                      item.anchorInputFieldName !== field.name &&
+                      (item.leftInputFieldName === field.name || item.rightInputFieldName === field.name),
                   );
                   return (
                   <div
@@ -454,7 +688,9 @@ export const TransformationWorkbench: React.FC = () => {
                       <Text strong>{field.name}</Text>
                       <Text type="secondary">{field.type}</Text>
                     </span>
-                    {mapping && <Tag color="blue">Direct pass</Tag>}
+                    {directMapping && <Tag color="blue">Direct pass</Tag>}
+                    {concatMapping && <Tag color="purple">Concat</Tag>}
+                    {!concatMapping && usedByConcat && <Tag>Used</Tag>}
                     <span className="connection-dot" />
                   </div>
                   );
@@ -472,15 +708,17 @@ export const TransformationWorkbench: React.FC = () => {
         <Card
           className="pipeline-panel rules-panel"
           title={<Space><FunctionOutlined /> Transformation rules</Space>}
-          extra={<Tag color="blue">{pipeline.directPassMappings.length} configured</Tag>}
+          extra={<Tag color="blue">{configuredOutputIds.size} configured</Tag>}
         >
-          {selectedInputField ? (
+          {selectedInputField || selectedOutputField ? (
             <div className="rules-preview">
               <div className="rule-editor">
                 <div className="selected-field-heading">
-                  <Text type="secondary">Selected input field</Text>
-                  <Title level={4}>{selectedInputField.name}</Title>
-                  <Tag>{selectedInputField.type}</Tag>
+                  <Text type="secondary">
+                    Selected {selectedOutputField ? 'output' : 'input'} field
+                  </Text>
+                  <Title level={4}>{selectedOutputField?.name || selectedInputField?.name}</Title>
+                  <Tag>{selectedOutputField?.type || selectedInputField?.type}</Tag>
                 </div>
 
                 <div className="rule-form">
@@ -488,29 +726,112 @@ export const TransformationWorkbench: React.FC = () => {
                   <Select
                     value={selectedRuleType}
                     placeholder="Select a transformation rule"
-                    options={[{ value: 'DIRECT_PASS', label: 'Direct Pass' }]}
-                    onChange={setSelectedRuleType}
+                    options={[
+                      { value: 'DIRECT_PASS', label: 'Direct Pass' },
+                      { value: 'CONCAT', label: 'Concat' },
+                    ]}
+                    onChange={selectRuleType}
                   />
 
                   {selectedRuleType === 'DIRECT_PASS' && (
                     <div className="direct-pass-editor">
                       <div className="mapping-field">
                         <Text type="secondary">Input field</Text>
-                        <Input value={selectedInputField.name} readOnly />
+                        {selectedOutputField ? (
+                          <Select
+                            value={selectedMapping?.inputFieldName}
+                            placeholder="Select an input field"
+                            options={inputFields.map((field) => ({
+                              value: field.name,
+                              label: `${field.name} · ${field.type}`,
+                            }))}
+                            onChange={setDirectPassInput}
+                          />
+                        ) : (
+                          <Input value={selectedInputField?.name} readOnly />
+                        )}
                       </div>
                       <ArrowRightOutlined className="mapping-arrow" />
                       <div className="mapping-field">
                         <Text type="secondary">Output field</Text>
-                        <Select
-                          value={selectedMapping?.outputFieldId}
-                          placeholder="Select an output field"
-                          options={pipeline.outputFields.map((field) => ({
-                            value: field.id,
-                            label: `${field.name} · ${field.type}`,
-                          }))}
-                          onChange={setDirectPassOutput}
-                        />
+                        {selectedOutputField ? (
+                          <Input value={selectedOutputField.name} readOnly />
+                        ) : (
+                          <Select
+                            value={selectedMapping?.outputFieldId}
+                            placeholder="Select an output field"
+                            options={pipeline.outputFields.map((field) => ({
+                              value: field.id,
+                              label: `${field.name} · ${field.type}`,
+                            }))}
+                            onChange={setDirectPassOutput}
+                          />
+                        )}
                       </div>
+                    </div>
+                  )}
+
+                  {selectedRuleType === 'CONCAT' && (
+                    <div className="concat-editor">
+                      <div className="concat-parts">
+                        <div className="mapping-field">
+                          <Text type="secondary">Left field (optional)</Text>
+                          <Select
+                            allowClear
+                            value={selectedConcatMapping?.leftInputFieldName}
+                            placeholder="Leave blank"
+                            options={inputFields.map((field) => ({
+                              value: field.name,
+                              label: `${field.name} · ${field.type}`,
+                            }))}
+                            onChange={(value) => updateConcatMapping({ leftInputFieldName: value })}
+                          />
+                        </div>
+                        <div className="mapping-field separator-field">
+                          <Text type="secondary">Separator</Text>
+                          <Input
+                            value={selectedConcatMapping?.separator || ''}
+                            placeholder="-"
+                            onChange={(event) => updateConcatMapping({ separator: event.target.value })}
+                          />
+                        </div>
+                        <div className="mapping-field">
+                          <Text type="secondary">Right field (optional)</Text>
+                          <Select
+                            allowClear
+                            value={selectedConcatMapping?.rightInputFieldName}
+                            placeholder="Leave blank"
+                            options={inputFields.map((field) => ({
+                              value: field.name,
+                              label: `${field.name} · ${field.type}`,
+                            }))}
+                            onChange={(value) => updateConcatMapping({ rightInputFieldName: value })}
+                          />
+                        </div>
+                      </div>
+                      <div className="concat-output">
+                        <ArrowRightOutlined />
+                        <div className="mapping-field">
+                          <Text type="secondary">Output field</Text>
+                          {selectedOutputField ? (
+                            <Input value={selectedOutputField.name} readOnly />
+                          ) : (
+                            <Select
+                              value={selectedConcatMapping?.outputFieldId}
+                              placeholder="Select an output field"
+                              options={pipeline.outputFields.map((field) => ({
+                                value: field.id,
+                                label: `${field.name} · ${field.type}`,
+                              }))}
+                              onChange={(value) => updateConcatMapping({ outputFieldId: value })}
+                            />
+                          )}
+                        </div>
+                      </div>
+                      {!selectedConcatMapping?.leftInputFieldName &&
+                        !selectedConcatMapping?.rightInputFieldName && (
+                          <Text type="danger">Select at least one input field.</Text>
+                        )}
                     </div>
                   )}
                 </div>
@@ -519,7 +840,8 @@ export const TransformationWorkbench: React.FC = () => {
                 <Text type="secondary">Pipeline mappings</Text>
                 <div>
                   <Tag color="blue">{pipeline.directPassMappings.length} direct pass</Tag>
-                  <Tag>{Math.max(inputFields.length - pipeline.directPassMappings.length, 0)} unconfigured</Tag>
+                  <Tag color="purple">{validConcatMappings.length} concat</Tag>
+                  <Tag>{Math.max(pipeline.outputFields.length - configuredOutputIds.size, 0)} unconfigured</Tag>
                 </div>
               </div>
             </div>
@@ -556,24 +878,76 @@ export const TransformationWorkbench: React.FC = () => {
           {pipeline.outputFields.length ? (
             <div className="field-list">
               {pipeline.outputFields.map((field, index) => {
-                const mapping = pipeline.directPassMappings.find(
+                const directMapping = pipeline.directPassMappings.find(
                   (item) => item.outputFieldId === field.id,
                 );
+                const concatMapping = pipeline.concatMappings.find(
+                  (item) => item.outputFieldId === field.id,
+                );
+                const mapping = directMapping || concatMapping;
                 return (
-                <div className={`schema-field output-field ${mapping ? 'mapped' : ''}`} key={field.id}>
+                <div
+                  className={`schema-field output-field ${mapping ? 'mapped' : ''} ${selectedOutputFieldId === field.id ? 'selected' : ''} ${draggedOutputFieldId === field.id ? 'dragging' : ''}`}
+                  key={field.id}
+                  onClick={() => selectOutputField(field.id)}
+                  onDragOver={(event) => event.preventDefault()}
+                  onDrop={(event) => {
+                    event.preventDefault();
+                    reorderOutputFields(field.id);
+                  }}
+                >
                   <span className="connection-dot" />
+                  <span
+                    className="field-drag-handle"
+                    draggable
+                    title="Drag to reorder"
+                    onClick={(event) => event.stopPropagation()}
+                    onDragStart={(event) => {
+                      event.stopPropagation();
+                      event.dataTransfer.effectAllowed = 'move';
+                      event.dataTransfer.setData('text/plain', field.id);
+                      setDraggedOutputFieldId(field.id);
+                    }}
+                    onDragEnd={() => setDraggedOutputFieldId(undefined)}
+                  >
+                    <HolderOutlined />
+                  </span>
                   <span className="field-index">{index + 1}</span>
                   <span className="field-copy">
                     <Text strong>{field.name}</Text>
                     <Text type="secondary">{field.type}</Text>
                   </span>
-                  {mapping && <Tag color="green">{mapping.inputFieldName}</Tag>}
+                  {directMapping && <Tag color="green">{directMapping.inputFieldName}</Tag>}
+                  {concatMapping && (
+                    <Tag color="purple">
+                      {concatMapping.leftInputFieldName || '∅'}
+                      {concatMapping.separator}
+                      {concatMapping.rightInputFieldName || '∅'}
+                    </Tag>
+                  )}
                   <Space size={2} className="field-actions">
                     <Tooltip title="Edit field">
-                      <Button type="text" size="small" icon={<EditOutlined />} onClick={() => openEditField(field)} />
+                      <Button
+                        type="text"
+                        size="small"
+                        icon={<EditOutlined />}
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          openEditField(field);
+                        }}
+                      />
                     </Tooltip>
-                    <Popconfirm title="Delete this output field?" onConfirm={() => removeField(field.id)}>
-                      <Button type="text" danger size="small" icon={<DeleteOutlined />} />
+                    <Popconfirm
+                      title="Delete this output field?"
+                      onConfirm={() => removeField(field.id)}
+                    >
+                      <Button
+                        type="text"
+                        danger
+                        size="small"
+                        icon={<DeleteOutlined />}
+                        onClick={(event) => event.stopPropagation()}
+                      />
                     </Popconfirm>
                   </Space>
                 </div>

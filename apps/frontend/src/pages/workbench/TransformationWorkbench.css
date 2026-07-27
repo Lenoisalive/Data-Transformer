@@ -153,6 +153,32 @@
   cursor: pointer;
 }
 
+.output-field {
+  cursor: pointer;
+}
+
+.output-field.dragging {
+  opacity: 0.45;
+  border-style: dashed;
+}
+
+.field-drag-handle {
+  display: grid;
+  place-items: center;
+  width: 20px;
+  flex: 0 0 20px;
+  color: #bfbfbf;
+  cursor: grab;
+}
+
+.field-drag-handle:hover {
+  color: #595959;
+}
+
+.field-drag-handle:active {
+  cursor: grabbing;
+}
+
 .schema-field.selected {
   border-color: #1677ff;
   background: #f0f7ff;
@@ -266,6 +292,43 @@
   border-radius: 12px;
 }
 
+.concat-editor {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 18px;
+  margin-top: 12px;
+  background: #fff;
+  border: 1px solid #d3adf7;
+  border-radius: 12px;
+}
+
+.concat-parts {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 100px minmax(0, 1fr);
+  gap: 10px;
+}
+
+.separator-field input {
+  text-align: center;
+  font-weight: 600;
+}
+
+.concat-output {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: end;
+  gap: 12px;
+  padding-top: 14px;
+  border-top: 1px dashed #d9d9d9;
+}
+
+.concat-output > .anticon {
+  margin-bottom: 9px;
+  color: #722ed1;
+  font-size: 18px;
+}
+
 .mapping-field {
   display: flex;
   min-width: 0;
@@ -335,5 +398,9 @@
 
   .pipeline-picker .ant-select {
     width: 100%;
+  }
+
+  .concat-parts {
+    grid-template-columns: 1fr;
   }
 }
