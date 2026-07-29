@@ -55,6 +55,18 @@ interface ConcatMapping {
   outputFieldId?: string;
 }
 
+type ArithmeticOperation = 'MULTIPLY' | 'DIVIDE' | 'ADD' | 'SUBTRACT';
+type UnitConversionPreset = 'LB_TO_G' | 'KG_TO_G' | 'KM_TO_MILE' | 'CUSTOM';
+
+interface UnitConversionMapping {
+  anchorInputFieldName: string;
+  inputFieldName?: string;
+  preset: UnitConversionPreset;
+  operation: ArithmeticOperation;
+  operand: number;
+  outputFieldId?: string;
+}
+
 interface Pipeline {
   id: string;
   name: string;
@@ -63,6 +75,7 @@ interface Pipeline {
   outputFields: OutputField[];
   directPassMappings: DirectPassMapping[];
   concatMappings: ConcatMapping[];
+  unitConversionMappings: UnitConversionMapping[];
 }
 
 interface FieldForm {
@@ -81,6 +94,7 @@ const createEmptyPipeline = (): Pipeline => ({
   outputFields: [],
   directPassMappings: [],
   concatMappings: [],
+  unitConversionMappings: [],
 });
 
 interface StoredPipelineDrafts {
@@ -119,6 +133,11 @@ export const TransformationWorkbench: React.FC = () => {
       : mapping.inputFieldName === selectedInputFieldName,
   );
   const selectedConcatMapping = pipeline?.concatMappings.find((mapping) =>
+    selectedOutputFieldId
+      ? mapping.outputFieldId === selectedOutputFieldId
+      : mapping.anchorInputFieldName === selectedInputFieldName,
+  );
+  const selectedUnitConversionMapping = pipeline?.unitConversionMappings.find((mapping) =>
     selectedOutputFieldId
       ? mapping.outputFieldId === selectedOutputFieldId
       : mapping.anchorInputFieldName === selectedInputFieldName,
@@ -162,6 +181,7 @@ export const TransformationWorkbench: React.FC = () => {
         ...item,
         directPassMappings: item.directPassMappings || [],
         concatMappings: item.concatMappings || [],
+        unitConversionMappings: item.unitConversionMappings || [],
       }));
       setPipelines(normalizedPipelines);
       setActivePipelineId(
@@ -232,6 +252,7 @@ export const TransformationWorkbench: React.FC = () => {
       outputFields: directFields,
       directPassMappings: [],
       concatMappings: [],
+      unitConversionMappings: [],
     });
     setSelectedInputFieldName(undefined);
     setSelectedOutputFieldId(undefined);
@@ -246,6 +267,7 @@ export const TransformationWorkbench: React.FC = () => {
       outputFields: [],
       directPassMappings: [],
       concatMappings: [],
+      unitConversionMappings: [],
     };
     setPipelines((current) => [...current, created]);
     setActivePipelineId(created.id);
@@ -286,6 +308,9 @@ export const TransformationWorkbench: React.FC = () => {
       concatMappings: pipeline.concatMappings.filter(
         (mapping) => mapping.outputFieldId !== fieldId,
       ),
+      unitConversionMappings: pipeline.unitConversionMappings.filter(
+        (mapping) => mapping.outputFieldId !== fieldId,
+      ),
     });
     if (selectedOutputFieldId === fieldId) {
       setSelectedOutputFieldId(undefined);
@@ -320,6 +345,10 @@ export const TransformationWorkbench: React.FC = () => {
       setSelectedRuleType('DIRECT_PASS');
     } else if (pipeline.concatMappings.some((mapping) => mapping.anchorInputFieldName === fieldName)) {
       setSelectedRuleType('CONCAT');
+    } else if (pipeline.unitConversionMappings.some(
+      (mapping) => mapping.anchorInputFieldName === fieldName,
+    )) {
+      setSelectedRuleType('UNIT_CONVERSION');
     } else {
       setSelectedRuleType(undefined);
     }
@@ -332,6 +361,10 @@ export const TransformationWorkbench: React.FC = () => {
       setSelectedRuleType('DIRECT_PASS');
     } else if (pipeline.concatMappings.some((mapping) => mapping.outputFieldId === fieldId)) {
       setSelectedRuleType('CONCAT');
+    } else if (pipeline.unitConversionMappings.some(
+      (mapping) => mapping.outputFieldId === fieldId,
+    )) {
+      setSelectedRuleType('UNIT_CONVERSION');
     } else {
       setSelectedRuleType(undefined);
     }
@@ -344,6 +377,12 @@ export const TransformationWorkbench: React.FC = () => {
     if (ruleType === 'DIRECT_PASS') {
       updatePipeline({
         concatMappings: pipeline.concatMappings.filter(
+          (mapping) =>
+            selectedOutputFieldId
+              ? mapping.outputFieldId !== selectedOutputFieldId
+              : mapping.anchorInputFieldName !== selectedInputFieldName,
+        ),
+        unitConversionMappings: pipeline.unitConversionMappings.filter(
           (mapping) =>
             selectedOutputFieldId
               ? mapping.outputFieldId !== selectedOutputFieldId
@@ -375,6 +414,46 @@ export const TransformationWorkbench: React.FC = () => {
                 outputFieldId: selectedOutputFieldId,
               },
             ],
+        unitConversionMappings: pipeline.unitConversionMappings.filter(
+          (mapping) =>
+            selectedOutputFieldId
+              ? mapping.outputFieldId !== selectedOutputFieldId
+              : mapping.anchorInputFieldName !== selectedInputFieldName,
+        ),
+      });
+    } else if (ruleType === 'UNIT_CONVERSION') {
+      const existing = pipeline.unitConversionMappings.find(
+        (mapping) =>
+          selectedOutputFieldId
+            ? mapping.outputFieldId === selectedOutputFieldId
+            : mapping.anchorInputFieldName === selectedInputFieldName,
+      );
+      updatePipeline({
+        directPassMappings: pipeline.directPassMappings.filter(
+          (mapping) =>
+            selectedOutputFieldId
+              ? mapping.outputFieldId !== selectedOutputFieldId
+              : mapping.inputFieldName !== selectedInputFieldName,
+        ),
+        concatMappings: pipeline.concatMappings.filter(
+          (mapping) =>
+            selectedOutputFieldId
+              ? mapping.outputFieldId !== selectedOutputFieldId
+              : mapping.anchorInputFieldName !== selectedInputFieldName,
+        ),
+        unitConversionMappings: existing
+          ? pipeline.unitConversionMappings
+          : [
+              ...pipeline.unitConversionMappings,
+              {
+                anchorInputFieldName: selectedInputFieldName || '',
+                inputFieldName: selectedInputFieldName,
+                preset: 'CUSTOM',
+                operation: 'MULTIPLY',
+                operand: 1,
+                outputFieldId: selectedOutputFieldId,
+              },
+            ],
       });
     }
   };
@@ -396,6 +475,11 @@ export const TransformationWorkbench: React.FC = () => {
         { inputFieldName: selectedInputFieldName, outputFieldId },
       ],
       concatMappings: pipeline.concatMappings.filter(
+        (mapping) =>
+          mapping.anchorInputFieldName !== selectedInputFieldName &&
+          mapping.outputFieldId !== outputFieldId,
+      ),
+      unitConversionMappings: pipeline.unitConversionMappings.filter(
         (mapping) =>
           mapping.anchorInputFieldName !== selectedInputFieldName &&
           mapping.outputFieldId !== outputFieldId,
@@ -423,6 +507,9 @@ export const TransformationWorkbench: React.FC = () => {
         { inputFieldName, outputFieldId: selectedOutputFieldId },
       ],
       concatMappings: pipeline.concatMappings.filter(
+        (mapping) => mapping.outputFieldId !== selectedOutputFieldId,
+      ),
+      unitConversionMappings: pipeline.unitConversionMappings.filter(
         (mapping) => mapping.outputFieldId !== selectedOutputFieldId,
       ),
     });
@@ -480,6 +567,9 @@ export const TransformationWorkbench: React.FC = () => {
         ),
         next,
       ],
+      unitConversionMappings: pipeline.unitConversionMappings.filter(
+        (mapping) => !next.outputFieldId || mapping.outputFieldId !== next.outputFieldId,
+      ),
     });
 
     if (displacedDirect || displacedConcat) {
@@ -487,14 +577,82 @@ export const TransformationWorkbench: React.FC = () => {
     }
   };
 
+  const updateUnitConversionMapping = (changes: Partial<UnitConversionMapping>) => {
+    if (!selectedInputFieldName && !selectedOutputFieldId) return;
+    const existing = pipeline.unitConversionMappings.find((mapping) =>
+      selectedOutputFieldId
+        ? mapping.outputFieldId === selectedOutputFieldId
+        : mapping.anchorInputFieldName === selectedInputFieldName,
+    ) || {
+      anchorInputFieldName: selectedInputFieldName || '',
+      inputFieldName: selectedInputFieldName,
+      preset: 'CUSTOM' as UnitConversionPreset,
+      operation: 'MULTIPLY' as ArithmeticOperation,
+      operand: 1,
+      outputFieldId: selectedOutputFieldId,
+    };
+    const next = {
+      ...existing,
+      ...changes,
+      anchorInputFieldName:
+        existing.anchorInputFieldName ||
+        selectedInputFieldName ||
+        changes.inputFieldName ||
+        '',
+      outputFieldId: selectedOutputFieldId || changes.outputFieldId || existing.outputFieldId,
+    };
+
+    updatePipeline({
+      directPassMappings: pipeline.directPassMappings.filter(
+        (mapping) => !next.outputFieldId || mapping.outputFieldId !== next.outputFieldId,
+      ),
+      concatMappings: pipeline.concatMappings.filter(
+        (mapping) => !next.outputFieldId || mapping.outputFieldId !== next.outputFieldId,
+      ),
+      unitConversionMappings: [
+        ...pipeline.unitConversionMappings.filter(
+          (mapping) =>
+            (selectedOutputFieldId
+              ? mapping.outputFieldId !== selectedOutputFieldId
+              : mapping.anchorInputFieldName !== selectedInputFieldName) &&
+            (!next.outputFieldId || mapping.outputFieldId !== next.outputFieldId),
+        ),
+        next,
+      ],
+    });
+  };
+
+  const selectUnitConversionPreset = (preset: UnitConversionPreset) => {
+    const presetValues: Record<
+      Exclude<UnitConversionPreset, 'CUSTOM'>,
+      { operation: ArithmeticOperation; operand: number }
+    > = {
+      LB_TO_G: { operation: 'MULTIPLY', operand: 453.59237 },
+      KG_TO_G: { operation: 'MULTIPLY', operand: 1000 },
+      KM_TO_MILE: { operation: 'MULTIPLY', operand: 0.621371 },
+    };
+    updateUnitConversionMapping({
+      preset,
+      ...(preset === 'CUSTOM' ? {} : presetValues[preset]),
+    });
+  };
+
   const validConcatMappings = pipeline.concatMappings.filter(
     (mapping) =>
       mapping.outputFieldId &&
       (mapping.leftInputFieldName || mapping.rightInputFieldName),
   );
+  const validUnitConversionMappings = pipeline.unitConversionMappings.filter(
+    (mapping) =>
+      mapping.outputFieldId &&
+      mapping.inputFieldName &&
+      Number.isFinite(Number(mapping.operand)) &&
+      !(mapping.operation === 'DIVIDE' && Number(mapping.operand) === 0),
+  );
   const configuredOutputIds = new Set([
     ...pipeline.directPassMappings.map((mapping) => mapping.outputFieldId),
     ...validConcatMappings.map((mapping) => mapping.outputFieldId!),
+    ...validUnitConversionMappings.map((mapping) => mapping.outputFieldId!),
   ]);
 
   const quoteIdentifier = (value: string) => `"${value.replace(/"/g, '""')}"`;
@@ -508,6 +666,9 @@ export const TransformationWorkbench: React.FC = () => {
     );
     const concatByOutputId = new Map(
       validConcatMappings.map((mapping) => [mapping.outputFieldId!, mapping]),
+    );
+    const unitConversionByOutputId = new Map(
+      validUnitConversionMappings.map((mapping) => [mapping.outputFieldId!, mapping]),
     );
     const selectExpressions = pipeline.outputFields.map((outputField) => {
       const direct = directByOutputId.get(outputField.id);
@@ -530,6 +691,17 @@ export const TransformationWorkbench: React.FC = () => {
           );
         }
         return `  CONCAT(${parts.join(', ')}) AS ${quoteIdentifier(outputField.name)}`;
+      }
+
+      const unitConversion = unitConversionByOutputId.get(outputField.id);
+      if (unitConversion) {
+        const operators: Record<ArithmeticOperation, string> = {
+          MULTIPLY: '*',
+          DIVIDE: '/',
+          ADD: '+',
+          SUBTRACT: '-',
+        };
+        return `  (CAST(source.${quoteIdentifier(unitConversion.inputFieldName!)} AS DECIMAL) ${operators[unitConversion.operation]} ${unitConversion.operand}) AS ${quoteIdentifier(outputField.name)}`;
       }
 
       return `  NULL AS ${quoteIdentifier(outputField.name)}`;
@@ -605,10 +777,14 @@ export const TransformationWorkbench: React.FC = () => {
       const concatByOutputId = new Map(
         validConcatMappings.map((mapping) => [mapping.outputFieldId!, mapping]),
       );
+      const unitConversionByOutputId = new Map(
+        validUnitConversionMappings.map((mapping) => [mapping.outputFieldId!, mapping]),
+      );
       const transformedRows = sourceRows.map((sourceRow) =>
         pipeline.outputFields.reduce<Record<string, any>>((outputRow, outputField) => {
           const inputFieldName = mappingByOutputId.get(outputField.id);
           const concat = concatByOutputId.get(outputField.id);
+          const unitConversion = unitConversionByOutputId.get(outputField.id);
           if (inputFieldName) {
             outputRow[outputField.name] = sourceRow[inputFieldName];
           } else if (concat) {
@@ -619,6 +795,19 @@ export const TransformationWorkbench: React.FC = () => {
               ? sourceRow[concat.rightInputFieldName] ?? ''
               : '';
             outputRow[outputField.name] = `${left}${concat.separator}${right}`;
+          } else if (unitConversion) {
+            const inputValue = Number(sourceRow[unitConversion.inputFieldName!]);
+            if (!Number.isFinite(inputValue)) {
+              outputRow[outputField.name] = null;
+            } else if (unitConversion.operation === 'MULTIPLY') {
+              outputRow[outputField.name] = inputValue * unitConversion.operand;
+            } else if (unitConversion.operation === 'DIVIDE') {
+              outputRow[outputField.name] = inputValue / unitConversion.operand;
+            } else if (unitConversion.operation === 'ADD') {
+              outputRow[outputField.name] = inputValue + unitConversion.operand;
+            } else {
+              outputRow[outputField.name] = inputValue - unitConversion.operand;
+            }
           } else {
             outputRow[outputField.name] = null;
           }
@@ -742,6 +931,9 @@ export const TransformationWorkbench: React.FC = () => {
                       item.anchorInputFieldName !== field.name &&
                       (item.leftInputFieldName === field.name || item.rightInputFieldName === field.name),
                   );
+                  const unitConversionMapping = pipeline.unitConversionMappings.find(
+                    (item) => item.anchorInputFieldName === field.name,
+                  );
                   return (
                   <div
                     className={`schema-field input-field ${selectedInputFieldName === field.name ? 'selected' : ''}`}
@@ -755,6 +947,7 @@ export const TransformationWorkbench: React.FC = () => {
                     </span>
                     {directMapping && <Tag color="blue">Direct pass</Tag>}
                     {concatMapping && <Tag color="purple">Concat</Tag>}
+                    {unitConversionMapping && <Tag color="orange">Convert</Tag>}
                     {!concatMapping && usedByConcat && <Tag>Used</Tag>}
                     <span className="connection-dot" />
                   </div>
@@ -794,6 +987,7 @@ export const TransformationWorkbench: React.FC = () => {
                     options={[
                       { value: 'DIRECT_PASS', label: 'Direct Pass' },
                       { value: 'CONCAT', label: 'Concat' },
+                      { value: 'UNIT_CONVERSION', label: 'Unit Conversion' },
                     ]}
                     onChange={selectRuleType}
                   />
@@ -899,14 +1093,101 @@ export const TransformationWorkbench: React.FC = () => {
                         )}
                     </div>
                   )}
-                </div>
-              </div>
-              <div className="mapping-summary">
-                <Text type="secondary">Pipeline mappings</Text>
-                <div>
-                  <Tag color="blue">{pipeline.directPassMappings.length} direct pass</Tag>
-                  <Tag color="purple">{validConcatMappings.length} concat</Tag>
-                  <Tag>{Math.max(pipeline.outputFields.length - configuredOutputIds.size, 0)} unconfigured</Tag>
+
+                  {selectedRuleType === 'UNIT_CONVERSION' && (
+                    <div className="unit-conversion-editor">
+                      <div className="mapping-field">
+                        <Text type="secondary">Input field</Text>
+                        {selectedOutputField ? (
+                          <Select
+                            value={selectedUnitConversionMapping?.inputFieldName}
+                            placeholder="Select a numeric input field"
+                            options={inputFields.map((field) => ({
+                              value: field.name,
+                              label: `${field.name} · ${field.type}`,
+                            }))}
+                            onChange={(value) =>
+                              updateUnitConversionMapping({ inputFieldName: value })
+                            }
+                          />
+                        ) : (
+                          <Input value={selectedInputField?.name} readOnly />
+                        )}
+                      </div>
+
+                      <div className="mapping-field">
+                        <Text type="secondary">Conversion</Text>
+                        <Select
+                          value={selectedUnitConversionMapping?.preset}
+                          options={[
+                            { value: 'LB_TO_G', label: 'Pound (lb) → Gram (g)' },
+                            { value: 'KG_TO_G', label: 'Kilogram (kg) → Gram (g)' },
+                            { value: 'KM_TO_MILE', label: 'Kilometer (km) → Mile' },
+                            { value: 'CUSTOM', label: 'Custom conversion' },
+                          ]}
+                          onChange={selectUnitConversionPreset}
+                        />
+                      </div>
+
+                      <div className="custom-operation-row">
+                        <div className="mapping-field">
+                          <Text type="secondary">Operation</Text>
+                          <Select
+                            value={selectedUnitConversionMapping?.operation}
+                            disabled={selectedUnitConversionMapping?.preset !== 'CUSTOM'}
+                            options={[
+                              { value: 'MULTIPLY', label: 'Multiply (×)' },
+                              { value: 'DIVIDE', label: 'Divide (÷)' },
+                              { value: 'ADD', label: 'Add (+)' },
+                              { value: 'SUBTRACT', label: 'Subtract (−)' },
+                            ]}
+                            onChange={(value) =>
+                              updateUnitConversionMapping({ operation: value })
+                            }
+                          />
+                        </div>
+                        <div className="mapping-field">
+                          <Text type="secondary">Value</Text>
+                          <Input
+                            type="number"
+                            value={selectedUnitConversionMapping?.operand}
+                            disabled={selectedUnitConversionMapping?.preset !== 'CUSTOM'}
+                            onChange={(event) =>
+                              updateUnitConversionMapping({
+                                operand: Number(event.target.value),
+                              })
+                            }
+                          />
+                        </div>
+                      </div>
+
+                      <div className="conversion-output-row">
+                        <ArrowRightOutlined />
+                        <div className="mapping-field">
+                          <Text type="secondary">Output field</Text>
+                          {selectedOutputField ? (
+                            <Input value={selectedOutputField.name} readOnly />
+                          ) : (
+                            <Select
+                              value={selectedUnitConversionMapping?.outputFieldId}
+                              placeholder="Select an output field"
+                              options={pipeline.outputFields.map((field) => ({
+                                value: field.id,
+                                label: `${field.name} · ${field.type}`,
+                              }))}
+                              onChange={(value) =>
+                                updateUnitConversionMapping({ outputFieldId: value })
+                              }
+                            />
+                          )}
+                        </div>
+                      </div>
+                      {selectedUnitConversionMapping?.operation === 'DIVIDE' &&
+                        Number(selectedUnitConversionMapping.operand) === 0 && (
+                          <Text type="danger">The divisor cannot be zero.</Text>
+                        )}
+                    </div>
+                  )}
                 </div>
               </div>
             </div>
@@ -949,7 +1230,10 @@ export const TransformationWorkbench: React.FC = () => {
                 const concatMapping = pipeline.concatMappings.find(
                   (item) => item.outputFieldId === field.id,
                 );
-                const mapping = directMapping || concatMapping;
+                const unitConversionMapping = pipeline.unitConversionMappings.find(
+                  (item) => item.outputFieldId === field.id,
+                );
+                const mapping = directMapping || concatMapping || unitConversionMapping;
                 return (
                 <div
                   className={`schema-field output-field ${mapping ? 'mapped' : ''} ${selectedOutputFieldId === field.id ? 'selected' : ''} ${draggedOutputFieldId === field.id ? 'dragging' : ''}`}
@@ -989,6 +1273,9 @@ export const TransformationWorkbench: React.FC = () => {
                       {concatMapping.separator}
                       {concatMapping.rightInputFieldName || '∅'}
                     </Tag>
+                  )}
+                  {unitConversionMapping && (
+                    <Tag color="orange">Conversion</Tag>
                   )}
                   <Space size={2} className="field-actions">
                     <Tooltip title="Edit field">

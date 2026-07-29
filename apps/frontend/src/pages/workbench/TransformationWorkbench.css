@@ -329,6 +329,38 @@
   font-size: 18px;
 }
 
+.unit-conversion-editor {
+  display: flex;
+  flex-direction: column;
+  gap: 15px;
+  padding: 18px;
+  margin-top: 12px;
+  background: #fffaf0;
+  border: 1px solid #ffd591;
+  border-radius: 12px;
+}
+
+.custom-operation-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+
+.conversion-output-row {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: end;
+  gap: 12px;
+  padding-top: 14px;
+  border-top: 1px dashed #ffd591;
+}
+
+.conversion-output-row > .anticon {
+  margin-bottom: 9px;
+  color: #d46b08;
+  font-size: 18px;
+}
+
 .mapping-field {
   display: flex;
   min-width: 0;
@@ -416,6 +448,10 @@
   }
 
   .concat-parts {
+    grid-template-columns: 1fr;
+  }
+
+  .custom-operation-row {
     grid-template-columns: 1fr;
   }
 }
